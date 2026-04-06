@@ -9,32 +9,46 @@ st.set_page_config(page_title="Fitness Pro", layout="wide")
 # ---------- DB ----------
 def connect():
     return sqlite3.connect("fitness.db")
-
 def create_db():
     conn = connect()
     c = conn.cursor()
 
-   
-    # CREATE NEW STRUCTURE
-    c.execute("""CREATE TABLE users(
+    # DROP OLD TABLES
+    try:
+        c.execute("DROP TABLE users")
+    except:
+        pass
+
+    try:
+        c.execute("DROP TABLE logs")
+    except:
+        pass
+
+    # CREATE USERS TABLE
+    c.execute("""
+    CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT,
+        username TEXT UNIQUE,
         password TEXT,
-        age INT,
+        age INTEGER,
         height REAL,
         weight REAL,
         goal TEXT
-    )""")
+    )
+    """)
 
-    c.execute("""CREATE TABLE logs(
+    # CREATE LOGS TABLE
+    c.execute("""
+    CREATE TABLE logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INT,
+        user_id INTEGER,
         date TEXT,
         calories REAL,
         protein REAL,
         workout TEXT,
         weight REAL
-    )""")
+    )
+    """)
 
     conn.commit()
     conn.close()

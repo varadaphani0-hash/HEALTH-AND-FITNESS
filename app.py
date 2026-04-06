@@ -4,7 +4,24 @@ import pandas as pd
 from datetime import datetime
 import plotly.express as px
 
-st.set_page_config(page_title="Fitness System", layout="wide")
+st.set_page_config(page_title="Health & Fitness", layout="wide")
+
+# ---------- STYLE ----------
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+    color: white;
+}
+.card {
+    padding: 20px;
+    border-radius: 15px;
+    background-color: rgba(255,255,255,0.05);
+    box-shadow: 0px 4px 20px rgba(0,0,0,0.3);
+    margin-bottom: 20px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ---------- DB ----------
 def connect():
@@ -40,22 +57,23 @@ def create_db():
 create_db()
 
 # ---------- AUTH ----------
-def register_user(u, p, age, h, w, g):
+def register_user(u,p,a,h,w,g):
     try:
         conn = connect()
         conn.execute("INSERT INTO users(username,password,age,height,weight,goal) VALUES(?,?,?,?,?,?)",
-                     (u.strip(), p.strip(), age, h, w, g))
+                     (u.strip(),p.strip(),a,h,w,g))
         conn.commit()
         return True
     except:
         return False
 
-def login_user(u, p):
+def login_user(u,p):
     df = pd.read_sql("SELECT * FROM users", connect())
-    return df[(df["username"].str.strip()==u.strip()) & (df["password"].str.strip()==p.strip())]
+    return df[(df["username"].str.strip()==u.strip()) &
+              (df["password"].str.strip()==p.strip())]
 
 # ---------- LOGIC ----------
-def add_log(uid, cal, pro, work, wt):
+def add_log(uid,cal,pro,work,wt):
     conn = connect()
     conn.execute("INSERT INTO logs(user_id,date,calories,protein,workout,weight) VALUES(?,?,?,?,?,?)",
                  (uid, datetime.now().strftime("%Y-%m-%d"), cal, pro, work, wt))
@@ -64,7 +82,7 @@ def add_log(uid, cal, pro, work, wt):
 def get_logs(uid):
     return pd.read_sql(f"SELECT * FROM logs WHERE user_id={uid}", connect())
 
-def get_rec(weight, goal):
+def get_rec(weight,goal):
     if goal=="fat loss":
         return weight*30-300, weight*1.5
     return weight*30+300, weight*2
@@ -75,7 +93,10 @@ if "user" not in st.session_state:
 
 # ---------- LOGIN ----------
 if st.session_state.user is None:
-    st.title("🔐 Login / Register")
+
+    st.image("logo.png", width=120)
+    st.markdown("<h1 style='text-align:center;'>Health & Fitness System</h1>", unsafe_allow_html=True)
+    st.markdown("---")
 
     opt = st.radio("", ["Login","Register"])
 
@@ -112,7 +133,8 @@ else:
     weight = float(user["weight"])
     goal = user["goal"]
 
-    st.sidebar.title(user["username"])
+    st.sidebar.image("logo.png", width=100)
+    st.sidebar.title(f"👤 {user['username']}")
     menu = st.sidebar.radio("Menu", ["Dashboard","Add Log","Analytics","Logout"])
 
     if menu=="Logout":
@@ -123,21 +145,25 @@ else:
 
     # ---------- DASHBOARD ----------
     if menu=="Dashboard":
-        st.title("Dashboard")
+        st.title("📊 Dashboard")
 
         rec_cal, rec_pro = get_rec(weight, goal)
 
         col1,col2,col3 = st.columns(3)
-        col1.metric("Target Calories", int(rec_cal))
-        col2.metric("Target Protein", int(rec_pro))
-        col3.metric("Total Logs", len(logs))
+
+        col1.markdown(f"<div class='card'><h3>Calories Target</h3><h2>{int(rec_cal)}</h2></div>", unsafe_allow_html=True)
+        col2.markdown(f"<div class='card'><h3>Protein Target</h3><h2>{int(rec_pro)}</h2></div>", unsafe_allow_html=True)
+        col3.markdown(f"<div class='card'><h3>Total Logs</h3><h2>{len(logs)}</h2></div>", unsafe_allow_html=True)
 
         if not logs.empty:
-            st.plotly_chart(px.line(logs, x="date", y=["calories","protein"]), use_container_width=True)
+            st.markdown("### 📈 Progress")
+            fig = px.line(logs, x="date", y=["calories","protein"], markers=True)
+            fig.update_layout(template="plotly_dark")
+            st.plotly_chart(fig, use_container_width=True)
 
     # ---------- ADD LOG ----------
     elif menu=="Add Log":
-        st.title("Add Daily Log")
+        st.title("➕ Add Daily Log")
 
         cal = st.number_input("Calories")
         pro = st.number_input("Protein")
@@ -150,45 +176,49 @@ else:
 
     # ---------- ANALYTICS ----------
     elif menu=="Analytics":
-        st.title("Analytics")
+        st.title("📊 Analytics")
 
         if logs.empty:
             st.warning("No data")
         else:
             rec_cal, rec_pro = get_rec(weight, goal)
 
-            # WEEKLY (last 7)
             recent = logs.tail(7)
 
             avg_cal = recent["calories"].mean()
             avg_pro = recent["protein"].mean()
-
-            st.subheader("Weekly Averages")
-            st.write(f"Calories: {avg_cal:.0f}")
-            st.write(f"Protein: {avg_pro:.0f}")
-
-            # WEIGHT CHANGE
             weight_change = recent["weight"].iloc[-1] - recent["weight"].iloc[0]
-            st.write(f"Weight Change: {weight_change:.2f} kg")
 
-            st.plotly_chart(px.bar(logs, x="date", y="weight"), use_container_width=True)
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.subheader("Weekly Summary")
+            st.write(f"🔥 Calories Avg: {avg_cal:.0f}")
+            st.write(f"💪 Protein Avg: {avg_pro:.0f}")
+            st.write(f"⚖️ Weight Change: {weight_change:.2f} kg")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            fig = px.bar(logs, x="date", y="weight")
+            fig.update_layout(template="plotly_dark")
+            st.plotly_chart(fig, use_container_width=True)
 
             # INSIGHTS
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
             st.subheader("Insights")
 
             if avg_pro < rec_pro*0.85:
-                st.error("Low protein intake")
+                st.error("⚠️ Low protein intake")
 
             workout_days = (recent["workout"]=="yes").sum()
             if workout_days < 3:
-                st.warning("Low workout consistency")
+                st.warning("⚠️ Low workout consistency")
 
             if abs(weight_change) < 0.2:
-                st.info("No significant weight change")
+                st.info("ℹ️ No significant weight change")
 
-            if avg_pro >= rec_pro*0.85 and workout_days>=3:
-                st.success("Good progress")
+            if avg_pro >= rec_pro*0.85 and workout_days >= 3:
+                st.success("✅ Good progress")
+
+            st.markdown("</div>", unsafe_allow_html=True)
 
             # TABLE
-            st.subheader("Recent Logs")
-            st.dataframe(logs.tail(10))
+            st.subheader("📋 Recent Logs")
+            st.dataframe(logs.tail(10), use_container_width=True)

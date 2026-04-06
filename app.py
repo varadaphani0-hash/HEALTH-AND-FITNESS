@@ -4,9 +4,9 @@ import pandas as pd
 from datetime import datetime
 import plotly.express as px
 
-st.set_page_config(page_title="Fitness Pro", layout="wide")
+st.set_page_config(page_title="Fitness System", layout="wide")
 
-# ---------------- DATABASE ----------------
+# ---------- DB ----------
 def connect():
     return sqlite3.connect("fitness.db", check_same_thread=False)
 
@@ -14,8 +14,7 @@ def create_db():
     conn = connect()
     c = conn.cursor()
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS users(
+    c.execute("""CREATE TABLE IF NOT EXISTS users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
         password TEXT,
@@ -23,11 +22,9 @@ def create_db():
         height REAL,
         weight REAL,
         goal TEXT
-    )
-    """)
+    )""")
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS logs(
+    c.execute("""CREATE TABLE IF NOT EXISTS logs(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         date TEXT,
@@ -35,78 +32,61 @@ def create_db():
         protein REAL,
         workout TEXT,
         weight REAL
-    )
-    """)
+    )""")
 
     conn.commit()
     conn.close()
 
 create_db()
 
-# ---------------- AUTH ----------------
-def register_user(username, password, age, height, weight, goal):
-    conn = connect()
+# ---------- AUTH ----------
+def register_user(u, p, age, h, w, g):
     try:
-        conn.execute(
-            "INSERT INTO users(username,password,age,height,weight,goal) VALUES(?,?,?,?,?,?)",
-            (username.strip(), password.strip(), age, height, weight, goal)
-        )
+        conn = connect()
+        conn.execute("INSERT INTO users(username,password,age,height,weight,goal) VALUES(?,?,?,?,?,?)",
+                     (u.strip(), p.strip(), age, h, w, g))
         conn.commit()
         return True
-    except Exception as e:
+    except:
         return False
 
-def login_user(username, password):
-    conn = connect()
-    df = pd.read_sql("SELECT * FROM users", conn)
-    conn.close()
+def login_user(u, p):
+    df = pd.read_sql("SELECT * FROM users", connect())
+    return df[(df["username"].str.strip()==u.strip()) & (df["password"].str.strip()==p.strip())]
 
-    user = df[
-        (df["username"].str.strip() == username.strip()) &
-        (df["password"].str.strip() == password.strip())
-    ]
-
-    return user
-
-# ---------------- LOGIC ----------------
+# ---------- LOGIC ----------
 def add_log(uid, cal, pro, work, wt):
     conn = connect()
-    date = datetime.now().strftime("%Y-%m-%d")
-
-    conn.execute(
-        "INSERT INTO logs(user_id,date,calories,protein,workout,weight) VALUES(?,?,?,?,?,?)",
-        (uid, date, cal, pro, work, wt)
-    )
+    conn.execute("INSERT INTO logs(user_id,date,calories,protein,workout,weight) VALUES(?,?,?,?,?,?)",
+                 (uid, datetime.now().strftime("%Y-%m-%d"), cal, pro, work, wt))
     conn.commit()
-    conn.close()
 
 def get_logs(uid):
     return pd.read_sql(f"SELECT * FROM logs WHERE user_id={uid}", connect())
 
 def get_rec(weight, goal):
-    if goal == "fat loss":
+    if goal=="fat loss":
         return weight*30-300, weight*1.5
     return weight*30+300, weight*2
 
-# ---------------- SESSION ----------------
+# ---------- SESSION ----------
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# ---------------- LOGIN PAGE ----------------
+# ---------- LOGIN ----------
 if st.session_state.user is None:
     st.title("🔐 Login / Register")
 
-    option = st.radio("", ["Login", "Register"])
+    opt = st.radio("", ["Login","Register"])
 
-    if option == "Login":
+    if opt=="Login":
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
 
         if st.button("Login"):
-            user = login_user(u, p)
+            user = login_user(u,p)
             if not user.empty:
                 st.session_state.user = user.iloc[0]
-                st.success("Login successful")
                 st.rerun()
             else:
                 st.error("Invalid credentials")
@@ -115,89 +95,100 @@ if st.session_state.user is None:
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
         age = st.number_input("Age")
-        height = st.number_input("Height")
-        weight = st.number_input("Weight")
-        goal = st.selectbox("Goal", ["fat loss", "muscle gain"])
+        h = st.number_input("Height")
+        w = st.number_input("Weight")
+        g = st.selectbox("Goal", ["fat loss","muscle gain"])
 
         if st.button("Register"):
-            if register_user(u, p, age, height, weight, goal):
+            if register_user(u,p,age,h,w,g):
                 st.success("Registered. Now login.")
             else:
-                st.error("Username already exists")
+                st.error("Username exists")
 
-# ---------------- MAIN APP ----------------
+# ---------- MAIN ----------
 else:
     user = st.session_state.user
     uid = int(user["id"])
     weight = float(user["weight"])
     goal = user["goal"]
 
-    st.sidebar.title(f"👋 {user['username']}")
-    menu = st.sidebar.radio("Menu", ["Dashboard", "Add Log", "Analytics", "Logout"])
+    st.sidebar.title(user["username"])
+    menu = st.sidebar.radio("Menu", ["Dashboard","Add Log","Analytics","Logout"])
 
-    if menu == "Logout":
-        st.session_state.user = None
+    if menu=="Logout":
+        st.session_state.user=None
         st.rerun()
 
-    # DASHBOARD
-    if menu == "Dashboard":
-        st.title("🔥 Dashboard")
+    logs = get_logs(uid)
 
-        logs = get_logs(uid)
+    # ---------- DASHBOARD ----------
+    if menu=="Dashboard":
+        st.title("Dashboard")
+
         rec_cal, rec_pro = get_rec(weight, goal)
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Calories Target", int(rec_cal))
-        col2.metric("Protein Target", int(rec_pro))
-        col3.metric("Logs", len(logs))
+        col1,col2,col3 = st.columns(3)
+        col1.metric("Target Calories", int(rec_cal))
+        col2.metric("Target Protein", int(rec_pro))
+        col3.metric("Total Logs", len(logs))
 
         if not logs.empty:
-            fig = px.line(logs, x="date", y=["calories", "protein"])
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(px.line(logs, x="date", y=["calories","protein"]), use_container_width=True)
 
-    # ADD LOG
-    elif menu == "Add Log":
-        st.title("📥 Add Daily Log")
+    # ---------- ADD LOG ----------
+    elif menu=="Add Log":
+        st.title("Add Daily Log")
 
         cal = st.number_input("Calories")
         pro = st.number_input("Protein")
-        work = st.selectbox("Workout", ["yes", "no"])
+        work = st.selectbox("Workout", ["yes","no"])
         wt = st.number_input("Weight")
 
         if st.button("Save"):
-            add_log(uid, cal, pro, work, wt)
+            add_log(uid,cal,pro,work,wt)
             st.success("Saved")
 
-    # ANALYTICS
-    elif menu == "Analytics":
-        st.title("📊 Analytics")
-
-        logs = get_logs(uid)
+    # ---------- ANALYTICS ----------
+    elif menu=="Analytics":
+        st.title("Analytics")
 
         if logs.empty:
-            st.warning("No data yet")
+            st.warning("No data")
         else:
             rec_cal, rec_pro = get_rec(weight, goal)
 
-            avg_cal = logs["calories"].mean()
-            avg_pro = logs["protein"].mean()
+            # WEEKLY (last 7)
+            recent = logs.tail(7)
 
-            st.write(f"Average Calories: {avg_cal:.0f}")
-            st.write(f"Average Protein: {avg_pro:.0f}")
+            avg_cal = recent["calories"].mean()
+            avg_pro = recent["protein"].mean()
 
-            fig = px.bar(logs, x="date", y="weight")
-            st.plotly_chart(fig, use_container_width=True)
+            st.subheader("Weekly Averages")
+            st.write(f"Calories: {avg_cal:.0f}")
+            st.write(f"Protein: {avg_pro:.0f}")
 
+            # WEIGHT CHANGE
+            weight_change = recent["weight"].iloc[-1] - recent["weight"].iloc[0]
+            st.write(f"Weight Change: {weight_change:.2f} kg")
+
+            st.plotly_chart(px.bar(logs, x="date", y="weight"), use_container_width=True)
+
+            # INSIGHTS
             st.subheader("Insights")
 
-            if avg_pro < rec_pro * 0.85:
+            if avg_pro < rec_pro*0.85:
                 st.error("Low protein intake")
-            else:
-                st.success("Protein on track")
 
-            workout_days = (logs["workout"] == "yes").sum()
-
+            workout_days = (recent["workout"]=="yes").sum()
             if workout_days < 3:
-                st.warning("Workout consistency low")
-            else:
-                st.success("Workout consistent")
+                st.warning("Low workout consistency")
+
+            if abs(weight_change) < 0.2:
+                st.info("No significant weight change")
+
+            if avg_pro >= rec_pro*0.85 and workout_days>=3:
+                st.success("Good progress")
+
+            # TABLE
+            st.subheader("Recent Logs")
+            st.dataframe(logs.tail(10))

@@ -1,35 +1,26 @@
 import streamlit as st
 import sqlite3
-from datetime import datetime
 import pandas as pd
+from datetime import datetime
 
-# ---------------- DATABASE ----------------
+st.set_page_config(page_title="Fitness App", layout="wide")
+
+# ---------------- DB ----------------
+def connect():
+    return sqlite3.connect("fitness.db")
+
 def create_db():
-    conn = sqlite3.connect("fitness.db")
+    conn = connect()
     c = conn.cursor()
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS users (
+    c.execute("""CREATE TABLE IF NOT EXISTS users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        age INTEGER,
-        height REAL,
-        weight REAL,
-        goal TEXT
-    )
-    """)
+        name TEXT, age INT, height REAL, weight REAL, goal TEXT)""")
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS logs (
+    c.execute("""CREATE TABLE IF NOT EXISTS logs(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        date TEXT,
-        calories REAL,
-        protein REAL,
-        workout TEXT,
-        weight REAL
-    )
-    """)
+        user_id INT, date TEXT, calories REAL,
+        protein REAL, workout TEXT, weight REAL)""")
 
     conn.commit()
     conn.close()
@@ -37,114 +28,139 @@ def create_db():
 create_db()
 
 # ---------------- FUNCTIONS ----------------
-def register_user(name, age, height, weight, goal):
-    conn = sqlite3.connect("fitness.db")
-    c = conn.cursor()
-    c.execute("INSERT INTO users (name,age,height,weight,goal) VALUES (?,?,?,?,?)",
-              (name, age, height, weight, goal))
-    conn.commit()
-    conn.close()
-
 def get_users():
-    conn = sqlite3.connect("fitness.db")
-    users = pd.read_sql("SELECT * FROM users", conn)
-    conn.close()
-    return users
+    return pd.read_sql("SELECT * FROM users", connect())
 
-def add_log(user_id, calories, protein, workout, weight):
-    conn = sqlite3.connect("fitness.db")
-    c = conn.cursor()
-    date = datetime.now().strftime("%Y-%m-%d")
-    c.execute("INSERT INTO logs (user_id,date,calories,protein,workout,weight) VALUES (?,?,?,?,?,?)",
-              (user_id, date, calories, protein, workout, weight))
+def add_user(name, age, height, weight, goal):
+    conn = connect()
+    conn.execute("INSERT INTO users(name,age,height,weight,goal) VALUES(?,?,?,?,?)",
+                 (name, age, height, weight, goal))
     conn.commit()
     conn.close()
 
-def get_logs(user_id):
-    conn = sqlite3.connect("fitness.db")
-    df = pd.read_sql(f"SELECT * FROM logs WHERE user_id={user_id}", conn)
+def add_log(uid, cal, pro, work, wt):
+    conn = connect()
+    date = datetime.now().strftime("%Y-%m-%d")
+    conn.execute("INSERT INTO logs(user_id,date,calories,protein,workout,weight) VALUES(?,?,?,?,?,?)",
+                 (uid, date, cal, pro, work, wt))
+    conn.commit()
     conn.close()
-    return df
 
-def get_recommendations(weight, goal):
+def get_logs(uid):
+    return pd.read_sql(f"SELECT * FROM logs WHERE user_id={uid}", connect())
+
+def get_rec(weight, goal):
     if goal == "fat loss":
         return weight*30-300, weight*1.5
-    else:
-        return weight*30+300, weight*2.0
+    return weight*30+300, weight*2
 
 # ---------------- UI ----------------
-st.title("🏋️ Fitness Data Management System")
+st.title("🔥 Fitness Intelligence Dashboard")
 
-menu = ["Register", "Add Log", "Analytics"]
-choice = st.sidebar.selectbox("Menu", menu)
+menu = st.sidebar.radio("Navigation", ["Dashboard","Register","Add Log","Analytics"])
 
 users = get_users()
 
+# ---------------- DASHBOARD ----------------
+if menu == "Dashboard":
+    st.subheader("Overview")
+
+    if users.empty:
+        st.warning("No users yet")
+    else:
+        user = st.selectbox("Select User", users["name"])
+        data = users[users["name"]==user]
+        uid = int(data["id"])
+        weight = float(data["weight"])
+        goal = data["goal"].values[0]
+
+        logs = get_logs(uid)
+
+        col1, col2, col3 = st.columns(3)
+
+        rec_cal, rec_pro = get_rec(weight, goal)
+
+        col1.metric("Target Calories", int(rec_cal))
+        col2.metric("Target Protein", int(rec_pro))
+        col3.metric("Logs Count", len(logs))
+
+        if not logs.empty:
+            st.line_chart(logs[["calories","protein"]])
+
 # ---------------- REGISTER ----------------
-if choice == "Register":
-    st.subheader("Register User")
+elif menu == "Register":
+    st.subheader("User Registration")
 
     name = st.text_input("Name")
     age = st.number_input("Age", 10, 100)
-    height = st.number_input("Height (cm)")
-    weight = st.number_input("Weight (kg)")
-    goal = st.selectbox("Goal", ["fat loss", "muscle gain"])
+    height = st.number_input("Height")
+    weight = st.number_input("Weight")
+    goal = st.selectbox("Goal", ["fat loss","muscle gain"])
 
     if st.button("Register"):
-        register_user(name, age, height, weight, goal)
-        st.success("User Registered")
+        add_user(name, age, height, weight, goal)
+        st.success("User Added")
 
 # ---------------- ADD LOG ----------------
-elif choice == "Add Log":
-    st.subheader("Add Daily Log")
+elif menu == "Add Log":
+    st.subheader("Daily Tracking")
 
     if users.empty:
-        st.warning("No users found")
+        st.warning("Add user first")
     else:
-        user = st.selectbox("Select User", users["name"])
-        user_id = int(users[users["name"] == user]["id"].values[0])
+        user = st.selectbox("User", users["name"])
+        uid = int(users[users["name"]==user]["id"])
 
-        calories = st.number_input("Calories")
-        protein = st.number_input("Protein")
-        workout = st.selectbox("Workout", ["yes", "no"])
-        weight = st.number_input("Current Weight")
+        cal = st.number_input("Calories")
+        pro = st.number_input("Protein")
+        work = st.selectbox("Workout", ["yes","no"])
+        wt = st.number_input("Weight")
 
-        if st.button("Add Log"):
-            add_log(user_id, calories, protein, workout, weight)
-            st.success("Log Added")
+        if st.button("Save Log"):
+            add_log(uid, cal, pro, work, wt)
+            st.success("Saved")
 
 # ---------------- ANALYTICS ----------------
-elif choice == "Analytics":
-    st.subheader("Analytics")
+elif menu == "Analytics":
+    st.subheader("Performance Analytics")
 
     if users.empty:
-        st.warning("No users found")
+        st.warning("No users")
     else:
-        user = st.selectbox("Select User", users["name"])
-        user_data = users[users["name"] == user]
-        user_id = int(user_data["id"].values[0])
-        weight = float(user_data["weight"].values[0])
-        goal = user_data["goal"].values[0]
+        user = st.selectbox("User", users["name"])
+        data = users[users["name"]==user]
+        uid = int(data["id"])
+        weight = float(data["weight"])
+        goal = data["goal"].values[0]
 
-        logs = get_logs(user_id)
+        logs = get_logs(uid)
 
         if logs.empty:
-            st.warning("No logs found")
+            st.warning("No logs")
         else:
-            rec_cal, rec_pro = get_recommendations(weight, goal)
-
-            st.write(f"Recommended Calories: {rec_cal:.0f}")
-            st.write(f"Recommended Protein: {rec_pro:.0f}")
-
-            st.line_chart(logs[["calories", "protein"]])
+            rec_cal, rec_pro = get_rec(weight, goal)
 
             avg_cal = logs["calories"].mean()
             avg_pro = logs["protein"].mean()
 
-            st.write(f"Average Calories: {avg_cal:.0f}")
-            st.write(f"Average Protein: {avg_pro:.0f}")
+            st.write("### Averages")
+            st.write(f"Calories: {avg_cal:.0f}")
+            st.write(f"Protein: {avg_pro:.0f}")
 
-            if avg_pro < rec_pro * 0.85:
+            st.line_chart(logs["weight"])
+
+            # INSIGHTS
+            st.write("### Insights")
+
+            if avg_pro < rec_pro*0.85:
                 st.error("Low protein intake")
             else:
-                st.success("Protein on track")
+                st.success("Protein OK")
+
+            workout_days = (logs["workout"]=="yes").sum()
+
+            if workout_days < 3:
+                st.warning("Low workout consistency")
+            else:
+                st.success("Workout consistent")
+    

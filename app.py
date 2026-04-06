@@ -14,10 +14,7 @@ def create_db():
     conn = connect()
     c = conn.cursor()
 
-    # RESET DATABASE
-    c.execute("DROP TABLE IF EXISTS users")
-    c.execute("DROP TABLE IF EXISTS logs")
-
+   
     # CREATE NEW STRUCTURE
     c.execute("""CREATE TABLE users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,

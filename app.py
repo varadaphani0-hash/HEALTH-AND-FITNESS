@@ -14,16 +14,30 @@ def create_db():
     conn = connect()
     c = conn.cursor()
 
-    c.execute("""CREATE TABLE IF NOT EXISTS users(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        password TEXT,
-        age INT, height REAL, weight REAL, goal TEXT)""")
+    # RESET DATABASE
+    c.execute("DROP TABLE IF EXISTS users")
+    c.execute("DROP TABLE IF EXISTS logs")
 
-    c.execute("""CREATE TABLE IF NOT EXISTS logs(
+    # CREATE NEW STRUCTURE
+    c.execute("""CREATE TABLE users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INT, date TEXT, calories REAL,
-        protein REAL, workout TEXT, weight REAL)""")
+        username TEXT,
+        password TEXT,
+        age INT,
+        height REAL,
+        weight REAL,
+        goal TEXT
+    )""")
+
+    c.execute("""CREATE TABLE logs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INT,
+        date TEXT,
+        calories REAL,
+        protein REAL,
+        workout TEXT,
+        weight REAL
+    )""")
 
     conn.commit()
     conn.close()

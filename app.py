@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 import plotly.express as px
+import hashlib
 
 st.set_page_config(page_title="Health & Fitness", layout="wide")
 
@@ -23,9 +24,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- DB ----------
+# ---------- DATABASE ----------
+DB_PATH = "fitness.db"
+
 def connect():
-    return sqlite3.connect("fitness.db", check_same_thread=False)
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def create_db():
     conn = connect()
@@ -52,31 +55,56 @@ def create_db():
     )""")
 
     conn.commit()
-    conn.close()
 
+# ---------- SECURITY ----------
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# ---------- SEED USER ----------
+def seed_user():
+    conn = connect()
+    df = pd.read_sql("SELECT * FROM users", conn)
+
+    if df.empty:
+        conn.execute("""
+        INSERT INTO users(username,password,age,height,weight,goal)
+        VALUES(?,?,?,?,?,?)
+        """, ("admin", hash_password("admin123"), 21, 180, 70, "fat loss"))
+        conn.commit()
+
+# ---------- INIT ----------
 create_db()
+seed_user()
 
 # ---------- AUTH ----------
 def register_user(u,p,a,h,w,g):
     try:
         conn = connect()
-        conn.execute("INSERT INTO users(username,password,age,height,weight,goal) VALUES(?,?,?,?,?,?)",
-                     (u.strip(),p.strip(),a,h,w,g))
+        conn.execute("""
+        INSERT INTO users(username,password,age,height,weight,goal)
+        VALUES(?,?,?,?,?,?)
+        """, (u.strip(), hash_password(p.strip()), a, h, w, g))
         conn.commit()
         return True
     except:
         return False
 
 def login_user(u,p):
-    df = pd.read_sql("SELECT * FROM users", connect())
-    return df[(df["username"].str.strip()==u.strip()) &
-              (df["password"].str.strip()==p.strip())]
+    conn = connect()
+    df = pd.read_sql("SELECT * FROM users", conn)
+
+    u = u.strip()
+    p = hash_password(p.strip())
+
+    return df[(df["username"]==u) & (df["password"]==p)]
 
 # ---------- LOGIC ----------
 def add_log(uid,cal,pro,work,wt):
     conn = connect()
-    conn.execute("INSERT INTO logs(user_id,date,calories,protein,workout,weight) VALUES(?,?,?,?,?,?)",
-                 (uid, datetime.now().strftime("%Y-%m-%d"), cal, pro, work, wt))
+    conn.execute("""
+    INSERT INTO logs(user_id,date,calories,protein,workout,weight)
+    VALUES(?,?,?,?,?,?)
+    """, (uid, datetime.now().strftime("%Y-%m-%d"), cal, pro, work, wt))
     conn.commit()
 
 def get_logs(uid):
@@ -91,7 +119,7 @@ def get_rec(weight,goal):
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# ---------- LOGIN ----------
+# ---------- LOGIN PAGE ----------
 if st.session_state.user is None:
 
     st.image("logo.png", width=120)
@@ -126,7 +154,7 @@ if st.session_state.user is None:
             else:
                 st.error("Username exists")
 
-# ---------- MAIN ----------
+# ---------- MAIN APP ----------
 else:
     user = st.session_state.user
     uid = int(user["id"])
@@ -135,10 +163,11 @@ else:
 
     st.sidebar.image("logo.png", width=100)
     st.sidebar.title(f"👤 {user['username']}")
+
     menu = st.sidebar.radio("Menu", ["Dashboard","Add Log","Analytics","Logout"])
 
     if menu=="Logout":
-        st.session_state.user=None
+        st.session_state.user = None
         st.rerun()
 
     logs = get_logs(uid)
@@ -156,7 +185,6 @@ else:
         col3.markdown(f"<div class='card'><h3>Total Logs</h3><h2>{len(logs)}</h2></div>", unsafe_allow_html=True)
 
         if not logs.empty:
-            st.markdown("### 📈 Progress")
             fig = px.line(logs, x="date", y=["calories","protein"], markers=True)
             fig.update_layout(template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
